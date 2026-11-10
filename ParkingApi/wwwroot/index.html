@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ParkSmart – Asistent Parcări</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%234f46e5'/><text x='50' y='71' font-size='62' font-weight='800' text-anchor='middle' fill='white' font-family='Arial'>P</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <aside id="sidebar">
+        <header class="brand-bar">
+            <div class="brand">
+                <div class="brand-logo">P</div>
+                <div>
+                    <h1>ParkSmart</h1>
+                    <span class="brand-sub">Parcări cu plată · București</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button id="theme-btn" class="chip-btn chip-icon" title="Schimbă tema">🌙</button>
+                <button onclick="showStats()" id="stats-btn" class="chip-btn chip-info">📊 Statistici</button>
+                <button onclick="toggleAdmin()" id="admin-btn" class="chip-btn chip-neutral">🔒 Admin</button>
+            </div>
+        </header>
+
+        <div id="dashboard-controls">
+            <div id="global-stats" class="global-stats"></div>
+            <div class="search-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="search-input" placeholder="Caută parcare sau adresă..." oninput="filterAndSortParkings()">
+            </div>
+            <div class="chips" id="filter-chips">
+                <button class="chip active" data-filter="all">Toate</button>
+                <button class="chip" data-filter="free">🟢 Cu locuri</button>
+                <button class="chip" data-filter="cheap">💸 Ieftine</button>
+                <button class="chip" data-filter="fav">♥ Favorite</button>
+            </div>
+            <select id="sort-select" onchange="filterAndSortParkings()">
+                <option value="default">Sortează rezultatele...</option>
+                <option value="distance">Cele mai apropiate de mine</option>
+                <option value="price-asc">Preț: crescător</option>
+                <option value="price-desc">Preț: descrescător</option>
+                <option value="spots-desc">Cele mai multe locuri libere</option>
+            </select>
+        </div>
+
+        <section id="my-reservations" class="my-res" style="display:none">
+            <h3>Rezervările mele</h3>
+            <div id="my-res-list"></div>
+        </section>
+
+        <div id="parking-list">
+            <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+        </div>
+    </aside>
+
+    <main id="map"></main>
+
+    <div class="map-legend">
+        <span><i style="background:#10b981"></i>Disponibil</span>
+        <span><i style="background:#f59e0b"></i>Aproape plin</span>
+        <span><i style="background:#ef4444"></i>Plin</span>
+    </div>
+    <button id="locate-btn" class="fab" title="Parcări lângă mine">📍</button>
+
+    <div id="toast-container"></div>
+
+    <!-- Modal Statistici -->
+    <div id="stats-modal" class="modal-overlay">
+        <div class="modal-content modal-wide modal-light">
+            <button class="close-btn" onclick="closeStats()" aria-label="Închide">&times;</button>
+            <h2>Dashboard Financiar <span class="live-dot">LIVE</span></h2>
+            <div id="total-revenue" class="revenue-pill"></div>
+            <div id="kpi-row" class="kpi-row"></div>
+            <div class="charts-grid">
+                <div class="chart-wrap"><canvas id="revenueChart"></canvas></div>
+                <div class="chart-wrap small"><canvas id="occupancyChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Login Admin -->
+    <div id="loginModal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="close-btn" id="closeModalBtn" aria-label="Închide">&times;</button>
+            <div class="modal-icon">🔐</div>
+            <h2>Autentificare Admin</h2>
+            <p class="modal-sub">Accesează panoul de administrare</p>
+            <div class="input-group">
+                <label for="adminEmail">Email</label>
+                <input type="email" id="adminEmail" placeholder="admin@parking.com">
+            </div>
+            <div class="input-group">
+                <label for="adminPassword">Parolă</label>
+                <input type="password" id="adminPassword" placeholder="••••••••">
+            </div>
+            <button id="submitLoginBtn" class="primary-btn">Autentificare</button>
+            <p id="loginError" class="error-text" style="display: none;">Email sau parolă incorectă!</p>
+        </div>
+    </div>
+
+    <!-- Modal Rezervare -->
+    <div id="reserveModal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeReserve()" aria-label="Închide">&times;</button>
+            <div class="modal-icon">🚗</div>
+            <h2>Rezervă un loc</h2>
+            <p class="modal-sub" id="reserveInfo"></p>
+            <div class="input-group">
+                <label for="plateInput">Număr de înmatriculare</label>
+                <input type="text" id="plateInput" placeholder="B 123 ABC" maxlength="12" style="text-transform: uppercase;">
+            </div>
+            <div class="input-group">
+                <label for="hoursSelect">Cât timp vei parca? (estimare cost)</label>
+                <select id="hoursSelect" class="plain-select">
+                    <option value="1">1 oră</option><option value="2">2 ore</option><option value="3">3 ore</option>
+                    <option value="4">4 ore</option><option value="6">6 ore</option><option value="12">12 ore</option>
+                </select>
+            </div>
+            <div class="cost-box"><span>Cost estimat</span><b id="costEstimate">0 RON</b></div>
+            <button id="confirmReserveBtn" class="primary-btn">Rezervă locul (ținut 30 min)</button>
+        </div>
+    </div>
+
+    <!-- Modal Adăugare parcare -->
+    <div id="addModal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="close-btn" id="closeAddBtn" aria-label="Închide">&times;</button>
+            <div class="modal-icon">➕</div>
+            <h2>Adaugă parcare</h2>
+            <p class="modal-sub" id="addCoords"></p>
+            <div class="input-group"><label for="addName">Nume</label><input type="text" id="addName" placeholder="Parcarea Unirii"></div>
+            <div class="input-group"><label for="addAddress">Adresă</label><input type="text" id="addAddress" placeholder="Piața Unirii 1"></div>
+            <div class="two-col">
+                <div class="input-group"><label for="addTotal">Nr. locuri</label><input type="number" id="addTotal" min="1" placeholder="50"></div>
+                <div class="input-group"><label for="addPrice">RON / oră</label><input type="number" id="addPrice" min="0" step="0.5" placeholder="8"></div>
+            </div>
+            <button id="saveAddBtn" class="primary-btn">Salvează parcarea</button>
+            <p id="addError" class="error-text" style="display:none"></p>
+        </div>
+    </div>
+
+    <!-- Modal Confirmare ștergere -->
+    <div id="confirmModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-icon">🗑️</div>
+            <h2>Ștergi parcarea?</h2>
+            <p class="modal-sub" id="confirmText">Acțiunea nu poate fi anulată.</p>
+            <div class="btn-row">
+                <button class="ghost-btn" onclick="closeConfirm()">Anulează</button>
+                <button class="danger-btn" id="confirmDeleteBtn">Șterge</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# .NET build
+bin/
+obj/
+.vs/
+*.user
+
+# Baza de date locală (conține conturi) – se recreează cu migrările
+*.db
+*.db-shm
+*.db-wal
+
+# Secrete locale
+appsettings.Local.json
